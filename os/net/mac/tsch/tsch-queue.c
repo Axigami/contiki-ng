@@ -246,9 +246,28 @@ tsch_queue_add_packet(const linkaddr_t *addr, uint8_t max_transmissions,
     n = tsch_queue_add_nbr(addr);
     if(n != NULL) {
       put_index = ringbufindex_peek_put(&n->tx_ringbuf);
+      if(put_index == -1) {
+        /* Neighbor queue full: drop oldest packet in this queue to make room */
+        struct tsch_packet *old_p = tsch_queue_remove_packet_from_queue(n);
+        if(old_p != NULL) {
+          LOG_WARN("! TSCH queue full: dropping oldest packet for nbr\n");
+          tsch_queue_free_packet(old_p);
+          put_index = ringbufindex_peek_put(&n->tx_ringbuf);
+        }
+      }
       if(put_index != -1) {
         p = memb_alloc(&packet_memb);
-        if(p != NULL) {
+        if(p == NULL) {
+          /* Global packet buffer exhausted: drop oldest packet from this neighbor to free buffer */
+          struct tsch_packet *old_p = tsch_queue_remove_packet_from_queue(n);
+          if(old_p != NULL) {
+            LOG_WARN("! TSCH global memb full: dropping oldest packet to recover\n");
+            tsch_queue_free_packet(old_p);
+            p = memb_alloc(&packet_memb);
+            put_index = ringbufindex_peek_put(&n->tx_ringbuf);
+          }
+        }
+        if(p != NULL && put_index != -1) {
           /* Enqueue packet */
           p->qb = queuebuf_new_from_packetbuf();
           if(p->qb != NULL) {

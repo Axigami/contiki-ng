@@ -52,6 +52,10 @@
 #include <inttypes.h>
 #include <limits.h>
 
+#ifdef VAMPIRE_DEFENSE_ENABLED
+#include "vampire_defense_ml.h"
+#endif
+
 /* Log configuration */
 #include "sys/log.h"
 #define LOG_MODULE "RPL"
@@ -215,6 +219,16 @@ dio_input(void)
   dio.lifetime_unit = RPL_DEFAULT_LIFETIME_UNIT;
 
   uip_ipaddr_copy(&from, &UIP_IP_BUF->srcipaddr);
+
+#ifdef VAMPIRE_DEFENSE_ENABLED
+  /* Check ACL blacklist before processing DIO */
+  if(acl_is_blacklisted_addr(&from)) {
+    LOG_WARN("ACL: Dropped DIO from blacklisted ");
+    LOG_WARN_6ADDR(&from);
+    LOG_WARN_("\n");
+    goto discard;
+  }
+#endif
 
   buffer_length = uip_len - uip_l3_icmp_hdr_len;
 
@@ -385,6 +399,15 @@ dio_input(void)
          (unsigned)dio.dtsn,
          (unsigned)dio.rank);
 
+#ifdef VAMPIRE_DEFENSE_ENABLED
+  /* Run vampire detection AFTER parsing DIO */
+  vampire_defense_check_dio(&from, dio.rank, dio.version);
+  /* Re-check ACL in case detection just added this node */
+  if(acl_is_blacklisted_addr(&from)) {
+    goto discard;
+  }
+#endif
+
   rpl_process_dio(&from, &dio);
 
 discard:
@@ -527,6 +550,25 @@ dao_input(void)
   uip_ipaddr_t from;
 
   memset(&dao, 0, sizeof(dao));
+
+  dao.instance_id = UIP_ICMP_PAYLOAD[0];
+  if(!curr_instance.used || curr_instance.instance_id != dao.instance_id) {
+    LOG_ERR("dao_input: unknown RPL instance %u, discard\n", dao.instance_id);
+    goto discard;
+  }
+
+  uip_ipaddr_copy(&from, &UIP_IP_BUF->srcipaddr);
+
+#ifdef VAMPIRE_DEFENSE_ENABLED
+  /* Check ACL blacklist before processing DAO */
+  if(acl_is_blacklisted_addr(&from)) {
+    LOG_WARN("ACL: Dropped DAO from blacklisted ");
+    LOG_WARN_6ADDR(&from);
+    LOG_WARN_("\n");
+    goto discard;
+  }
+#endif
+  memset(&dao.parent_addr, 0, 16);
 
   buffer = UIP_ICMP_PAYLOAD;
   buffer_length = uip_len - uip_l3_icmp_hdr_len;
@@ -802,6 +844,16 @@ dao_ack_input(void)
          curr_instance.dag.dao_last_seqno, curr_instance.dag.dao_last_seqno, status);
   LOG_INFO_6ADDR(&UIP_IP_BUF->srcipaddr);
   LOG_INFO_("\n");
+
+#ifdef VAMPIRE_DEFENSE_ENABLED
+  /* Check ACL blacklist for DAO-ACK */
+  if(acl_is_blacklisted_addr(&UIP_IP_BUF->srcipaddr)) {
+    LOG_WARN("ACL: Dropped DAO-ACK from blacklisted ");
+    LOG_WARN_6ADDR(&UIP_IP_BUF->srcipaddr);
+    LOG_WARN_("\n");
+    goto discard;
+  }
+#endif
 
   rpl_process_dao_ack(sequence, status);
 

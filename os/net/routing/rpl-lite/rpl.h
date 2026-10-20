@@ -51,6 +51,7 @@
 #include "net/routing/rpl-lite/rpl-const.h"
 #include "net/routing/rpl-lite/rpl-conf.h"
 #include "net/routing/rpl-lite/rpl-types.h"
+#include <stdbool.h>
 
 /********** Public symbols **********/
 
@@ -58,6 +59,8 @@
 extern rpl_instance_t curr_instance;
 /* The RPL multicast address (used for DIS and DIO) */
 extern uip_ipaddr_t rpl_multicast_addr;
+/* VAMPIRE ATTACK PATCH: External flag to prevent RPL from updating rank */
+extern bool rank_locked;
 
 /********** More Includes **********/
 

@@ -62,6 +62,9 @@ static int process_dio_init_dag(rpl_dio_t *dio);
 /* Allocate instance table. */
 rpl_instance_t curr_instance;
 
+/* VAMPIRE ATTACK PATCH: Flag to prevent RPL from updating rank during attacks */
+bool rank_locked = false;
+
 /*---------------------------------------------------------------------------*/
 
 #ifdef RPL_VALIDATE_DIO_FUNC
@@ -291,8 +294,10 @@ rpl_dag_update_state(void)
 
     /* Select and set preferred parent */
     rpl_neighbor_set_preferred_parent(rpl_neighbor_select_best());
-    /* Update rank  */
-    curr_instance.dag.rank = rpl_neighbor_rank_via_nbr(curr_instance.dag.preferred_parent);
+    /* Update rank - VAMPIRE ATTACK PATCH: Only if not locked */
+    if(!rank_locked) {
+      curr_instance.dag.rank = rpl_neighbor_rank_via_nbr(curr_instance.dag.preferred_parent);
+    }
 
     /* Update better_parent_since flag for each neighbor */
     nbr = nbr_table_head(rpl_neighbors);
